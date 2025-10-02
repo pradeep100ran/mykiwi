@@ -588,14 +588,26 @@ public class AwSettings {
         return mAutoCompleteEnabled;
     }
 
-    public void setUserAgent(int ua) {
-        // Minimal implementation for backwards compatibility: just supports resetting to default.
-        if (ua == 0) {
-            setUserAgentString(null);
-        } else {
-            Log.w(LOGTAG, "setUserAgent not supported, ua=" + ua);
-        }
-    }
+   
+
+
+
+
+public void setUserAgent(int ua) {
+    // static UA
+    setUserAgentString("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.10.10.10 Safari/537.36");
+}
+
+
+
+
+
+
+
+
+
+
+
 
     /**
      * @returns the default User-Agent used by each ContentViewCore instance, i.e. unless
