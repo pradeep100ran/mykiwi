@@ -1,1 +1,83 @@
 
+name: Build Minimal Kiwi APK
+
+on:
+  workflow_dispatch:  # Allows manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Checkout the repo (this repo can contain keystore or scripts)
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    # 2. Install minimal dependencies
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3 openjdk-8-jdk-headless libncurses5 git wget unzip
+
+    # 3. Setup depot_tools
+    - name: Setup depot_tools
+      run: |
+        git clone --depth=1 https://chromium.googlesource.com/chromium/tools/depot_tools.git ~/depot_tools
+        echo 'export PATH=$HOME/depot_tools:$PATH' >> $GITHUB_ENV
+
+    # 4. Clone Kiwi source & dependencies (shallow clone)
+    - name: Clone Kiwi source
+      run: |
+        mkdir -p ~/chromium
+        cd ~/chromium
+        git clone --depth=1 https://github.com/kiwibrowser/dependencies.git
+        git clone --depth=1 https://github.com/kiwibrowser/src.git src
+
+    # 5. Generate temporary keystore
+    - name: Generate Keystore
+      run: |
+        keytool -genkey -v -keystore ~/chromium/keystore.jks \
+        -alias production -keyalg RSA -keysize 2048 -validity 10000 \
+        -storepass android -keypass android \
+        -dname "CN=Kiwi,O=Kiwi,C=IN"
+
+    # 6. Configure build arguments (minimal)
+    - name: Configure GN args
+      run: |
+        mkdir -p ~/chromium/src/out/android_arm
+        cat <<EOF > ~/chromium/src/out/android_arm/args.gn
+target_os = "android"
+target_cpu = "arm"
+is_debug = false
+is_official_build = true
+is_chrome_branded = false
+is_component_build = false
+is_clang = true
+symbol_level = 0
+use_unofficial_version_number = false
+android_keystore_name = "production"
+android_keystore_password = "android"
+android_keystore_path = "../../../keystore.jks"
+enable_extensions = true
+enable_plugins = true
+EOF
+
+    # 7. Prepare the build
+    - name: Run gclient hooks and GN
+      run: |
+        cd ~/chromium/src
+        gclient runhooks
+        gn gen out/android_arm
+
+    # 8. Compile APK
+    - name: Build APK
+      run: |
+        cd ~/chromium/src
+        ninja -C out/android_arm chrome_public_apk
+
+    # 9. Upload APK as artifact
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: Kiwi-APK
+        path: ~/chromium/src/out/android_arm/apks/ChromePublic.apk
