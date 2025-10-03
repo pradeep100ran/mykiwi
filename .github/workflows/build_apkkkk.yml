@@ -1,0 +1,55 @@
+name: Build Kiwi APK
+
+on:
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+
+    strategy:
+      matrix:
+        platform: [arm, arm64, x86, x64]
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python openjdk-8-jdk-headless libncurses5 ccache ninja-build git curl
+
+      - name: Setup output folder
+        run: mkdir -p out/android_${{ matrix.platform }}/apks
+
+      - name: Generate dev keystore
+        run: |
+          keytool -genkey -v -keystore keystore.jks -alias dev -keyalg RSA -keysize 2048 -validity 10000 \
+          -storepass public_password -keypass public_password -dname "cn=Kiwi Browser (unverified), ou=Actions, o=Kiwi Browser, c=GitHub"
+
+      - name: Prepare build config
+        run: |
+          mkdir -p out/android_${{ matrix.platform }}
+          echo "target_cpu = \"${{ matrix.platform }}\"" > out/android_${{ matrix.platform }}/args.gn
+          echo "is_debug = false" >> out/android_${{ matrix.platform }}/args.gn
+
+      - name: Download depot_tools
+        run: |
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          echo "::add-path::$(pwd)/depot_tools"
+
+      - name: Run gclient hooks
+        run: gclient runhooks || true
+
+      - name: Generate build files
+        run: gn gen out/android_${{ matrix.platform }}
+
+      - name: Build APK
+        run: ninja -C out/android_${{ matrix.platform }} chrome_public_apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: apk-${{ matrix.platform }}
+          path: out/android_${{ matrix.platform }}/apks/ChromePublic.apk
