@@ -1,55 +1,67 @@
-name: Build Kiwi APK
+name: Build Kiwi APK (arm64)
 
 on:
-  workflow_dispatch: # Allows manual trigger from GitHub UI
+  workflow_dispatch: # manual trigger
 
 jobs:
   build:
     runs-on: ubuntu-20.04
 
-    strategy:
-      matrix:
-        platform: [arm, arm64, x86, x64]
-
     steps:
-      - name: Checkout source code
+      - name: Checkout repo
         uses: actions/checkout@v3
+
+      - name: Check disk & memory
+        run: |
+          df -h
+          free -m
+
+      - name: Setup ccache cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.ccache
+          key: ccache-${{ github.sha }}
+          restore-keys: ccache-
 
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y python openjdk-8-jdk-headless libncurses5 ccache ninja-build git curl
 
-      - name: Setup output folder
-        run: mkdir -p out/android_${{ matrix.platform }}/apks
+      - name: Create output folder
+        run: mkdir -p out/android_arm64/apks
 
       - name: Generate dev keystore
         run: |
-          keytool -genkey -v -keystore keystore.jks -alias dev -keyalg RSA -keysize 2048 -validity 10000 \
-          -storepass public_password -keypass public_password -dname "cn=Kiwi Browser (unverified), ou=Actions, o=Kiwi Browser, c=GitHub"
+          keytool -genkey -v -keystore keystore.jks -alias dev -keyalg RSA -keysize 2048 \
+          -validity 10000 -storepass public_password -keypass public_password \
+          -dname "cn=Kiwi Browser (unverified), ou=Actions, o=Kiwi Browser, c=GitHub"
 
       - name: Prepare build config
         run: |
-          mkdir -p out/android_${{ matrix.platform }}
-          echo "target_cpu = \"${{ matrix.platform }}\"" > out/android_${{ matrix.platform }}/args.gn
-          echo "is_debug = false" >> out/android_${{ matrix.platform }}/args.gn
+          echo "target_cpu = \"arm64\"" > out/android_arm64/args.gn
+          echo "is_debug = false" >> out/android_arm64/args.gn
 
       - name: Download depot_tools
         run: |
           git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
-          echo "::add-path::$(pwd)/depot_tools"
+        env:
+          PATH: ${{ github.workspace }}/depot_tools:${{ env.PATH }}
+
+      - name: Add depot_tools to PATH
+        run: echo "${{ github.workspace }}/depot_tools" >> $GITHUB_PATH
 
       - name: Run gclient hooks
         run: gclient runhooks || true
 
       - name: Generate build files
-        run: gn gen out/android_${{ matrix.platform }}
+        run: gn gen out/android_arm64
 
       - name: Build APK
-        run: ninja -C out/android_${{ matrix.platform }} chrome_public_apk
+        run: ninja -C out/android_arm64 chrome_public_apk -j2
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v3
         with:
-          name: apk-${{ matrix.platform }}
-          path: out/android_${{ matrix.platform }}/apks/ChromePublic.apk
+          name: apk-arm64
+          path: out/android_arm64/apks/ChromePublic.apk
